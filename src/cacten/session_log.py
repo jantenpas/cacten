@@ -27,9 +27,9 @@ class SessionLog(BaseModel):
     original_prompt: str
     retrieved_chunks: list[RetrievedChunk]
     latency_ms: int
-    # Populated after Claude responds — not available at retrieval time
-    response: str = ""
-    model: str = ""
+    # Populated during Phase 3 eval export — not captured at retrieval time
+    response: str | None = None
+    model: str | None = None
 
 
 def write_session_log(

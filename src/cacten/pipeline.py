@@ -25,7 +25,9 @@ def ingest(
     config.ensure_dirs()
 
     # Load document
-    is_url = source.startswith("http://") or source.startswith("https://")
+    if source.startswith("http://"):
+        raise ValueError("Insecure URLs are not allowed. Use https://")
+    is_url = source.startswith("https://")
     if is_url:
         text, content_type = load_url(source)
         source_url: str | None = source
@@ -56,7 +58,7 @@ def ingest(
         if start == -1:
             start = char_pos
         end = start + len(chunk_text)
-        char_pos = start + 1
+        char_pos = end
 
         metadata = ChunkMetadata(
             chunk_id=str(uuid4()),

@@ -6,6 +6,7 @@ from cacten import config
 from cacten.embeddings import embed_dense, embed_sparse
 from cacten.models import ScoredChunk
 from cacten.store import QdrantVectorStore
+from cacten.versions import get_version
 
 
 def retrieve(
@@ -27,6 +28,14 @@ def retrieve(
     if version_id is None:
         raise RuntimeError("No active KB version. Run `cacten ingest` first.")
 
+    version = get_version(version_id)
+    if version is not None and version.embedding_model != config.EMBEDDING_MODEL:
+        raise RuntimeError(
+            f"Embedding model mismatch: KB version was built with "
+            f"'{version.embedding_model}' but current model is '{config.EMBEDDING_MODEL}'. "
+            f"Re-ingest your documents to rebuild with the current model."
+        )
+
     dense = embed_dense(query)
     sparse_idx, sparse_val = embed_sparse(query)
 
@@ -45,9 +54,11 @@ def format_context_block(chunks: list[ScoredChunk]) -> str:
     if not chunks:
         return "<cacten_context>\nNo relevant context found.\n</cacten_context>"
 
+    version_id = chunks[0].chunk.metadata.kb_version_id
     lines = [
         "The following context was retrieved from your personal knowledge base.",
         "Use it to inform your response, but do not cite it directly unless asked.",
+        f"KB version: {version_id}",
         "",
     ]
     for sc in chunks:

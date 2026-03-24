@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment and secrets
+.env
+.env.*
+
+# MCP config (contains local paths)
+.mcp.json
+
+# Logs and data
+*.log
+~/.cacten/
