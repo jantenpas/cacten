@@ -1,5 +1,6 @@
 """Tests for QdrantVectorStore (uses a temp Qdrant path)."""
 
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -33,7 +34,7 @@ def _make_chunk(version_id: str, idx: int = 0) -> Chunk:
 
 
 @pytest.fixture()
-def store(tmp_path: Path) -> QdrantVectorStore:
+def store(tmp_path: Path) -> Generator[QdrantVectorStore, None, None]:
     with patch.object(store_module, "QDRANT_PATH", tmp_path / "qdrant"):
         yield QdrantVectorStore()
 

@@ -16,6 +16,10 @@ wheels/
 # MCP config (contains local paths)
 .mcp.json
 
+# Test coverage
+.coverage
+htmlcov/
+
 # Logs and data
 *.log
 ~/.cacten/

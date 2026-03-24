@@ -79,7 +79,7 @@ def test_search_writes_session_log(tmp_path: Path) -> None:
     captured: list[dict[str, object]] = []
 
     def fake_write(**kwargs: object) -> None:
-        captured.append(kwargs)  # type: ignore[arg-type]
+        captured.append(dict(kwargs))
 
     with (
         patch.object(config, "get_active_version_id", return_value=version_id),
@@ -185,3 +185,58 @@ def test_end_to_end_ingest_retrieve(tmp_path: Path) -> None:
     context = format_context_block(results)
     assert "<cacten_context>" in context
     assert "e2e.md" in context
+
+
+def test_personal_context_retrieval_error() -> None:
+    version_id = str(uuid4())
+    with (
+        patch.object(config, "get_active_version_id", return_value=version_id),
+        patch("cacten.server.retrieve", side_effect=RuntimeError("boom")),
+    ):
+        result = personal_context()
+    assert "unavailable" in result
+
+
+def test_personal_context_empty_chunks() -> None:
+    version_id = str(uuid4())
+    with (
+        patch.object(config, "get_active_version_id", return_value=version_id),
+        patch("cacten.server.retrieve", return_value=[]),
+    ):
+        result = personal_context()
+    assert "No personal context found" in result
+
+
+async def test_serve_passthrough_skips_ollama() -> None:
+    from unittest.mock import AsyncMock
+
+    from cacten.server import serve
+
+    with (
+        patch("cacten.server.check_ollama") as mock_check,
+        patch("cacten.server.mcp") as mock_mcp,
+    ):
+        mock_mcp.run_stdio_async = AsyncMock()
+        await serve(passthrough=True)
+        mock_check.assert_not_called()
+
+
+async def test_serve_ollama_warning_on_failure() -> None:
+    import sys
+    from io import StringIO
+    from unittest.mock import AsyncMock
+
+    from cacten.server import serve
+
+    with (
+        patch("cacten.server.check_ollama", side_effect=RuntimeError("offline")),
+        patch("cacten.server.mcp") as mock_mcp,
+    ):
+        mock_mcp.run_stdio_async = AsyncMock()
+        buf = StringIO()
+        with patch.object(sys, "stderr", buf):
+            await serve(passthrough=False)
+
+    stderr_output = buf.getvalue()
+    assert "Warning" in stderr_output, f"Expected warning on stderr, got: {stderr_output!r}"
+    assert "offline" in stderr_output, f"Expected error message in warning, got: {stderr_output!r}"

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from cacten.loaders import _html_to_text, load_file
 
 
@@ -15,18 +17,15 @@ def test_load_markdown(tmp_path: Path) -> None:
 
 def test_load_pdf(tmp_path: Path) -> None:
     # Use pypdf to create a minimal valid PDF
-    try:
-        from pypdf import PdfWriter
+    PdfWriter = pytest.importorskip("pypdf").PdfWriter
 
-        writer = PdfWriter()
-        writer.add_blank_page(width=200, height=200)
-        pdf_path = tmp_path / "test.pdf"
-        with open(pdf_path, "wb") as f:
-            writer.write(f)
-        text, content_type = load_file(pdf_path)
-        assert content_type == "pdf"
-    except ImportError:
-        pass  # pypdf not available — skip
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    pdf_path = tmp_path / "test.pdf"
+    with open(pdf_path, "wb") as f:
+        writer.write(f)
+    text, content_type = load_file(pdf_path)
+    assert content_type == "pdf"
 
 
 def test_html_to_text_strips_tags() -> None:

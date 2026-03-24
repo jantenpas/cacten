@@ -133,9 +133,10 @@ All data lives in `~/.cacten/`:
 ## Development
 
 ```bash
-uv run pytest            # run tests
-uv run ruff check src/   # lint
-uv run mypy src/         # type check
+uv run pytest                                        # run tests
+uv run pytest --cov --cov-report=term-missing        # run tests with coverage
+uv run ruff check src/                               # lint
+uv run mypy src/                                     # type check
 ```
 
 ---
