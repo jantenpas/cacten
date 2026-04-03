@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from cacten.loaders import _html_to_text, load_file
+from cacten.loaders import EXTENSION_CONTENT_TYPE, _html_to_text, load_file
 
 
 def test_load_markdown(tmp_path: Path) -> None:
@@ -41,3 +41,30 @@ def test_html_to_text_removes_scripts() -> None:
     text = _html_to_text(html)
     assert "alert" not in text
     assert "Safe" in text
+
+
+def test_load_python_file(tmp_path: Path) -> None:
+    f = tmp_path / "module.py"
+    f.write_text("def foo():\n    pass\n")
+    text, content_type = load_file(f)
+    assert "def foo" in text
+    assert content_type == "python"
+
+
+def test_load_typescript_file(tmp_path: Path) -> None:
+    f = tmp_path / "component.ts"
+    f.write_text("function foo(): void {}\n")
+    text, content_type = load_file(f)
+    assert content_type == "typescript"
+
+
+def test_load_unsupported_extension_raises(tmp_path: Path) -> None:
+    f = tmp_path / "file.xyz"
+    f.write_text("data")
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        load_file(f)
+
+
+def test_extension_content_type_covers_common_types() -> None:
+    for ext in (".py", ".ts", ".tsx", ".js", ".md", ".html", ".json", ".pdf"):
+        assert ext in EXTENSION_CONTENT_TYPE

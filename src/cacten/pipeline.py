@@ -8,10 +8,13 @@ from uuid import uuid4
 
 from cacten import config, versions
 from cacten.embeddings import embed_dense, embed_sparse
-from cacten.loaders import load_file, load_url
+from cacten.loaders import EXTENSION_CONTENT_TYPE, load_file, load_url
 from cacten.models import Chunk, ChunkMetadata, KBVersion
-from cacten.splitter import split_text
+from cacten.splitter import split_by_content_type
 from cacten.store import QdrantVectorStore
+
+# Directories that are never useful to ingest.
+_SKIP_DIRS = {".git", ".venv", "__pycache__", "node_modules", ".mypy_cache", ".pytest_cache"}
 
 
 def ingest(
@@ -39,7 +42,7 @@ def ingest(
         source_filename = path.name
 
     # Split
-    raw_chunks = split_text(text)
+    raw_chunks = split_by_content_type(text, content_type)
     if not raw_chunks:
         raise ValueError(f"No text extracted from {source!r}")
 
@@ -94,3 +97,42 @@ def ingest(
     )
     config.set_active_version_id(version.version_id)
     return version
+
+
+def ingest_directory(
+    directory: str,
+    extensions: list[str] | None = None,
+    notes: str | None = None,
+) -> list[KBVersion]:
+    """Ingest all supported files in a directory tree.
+
+    Walks the directory recursively, skipping hidden dirs and common
+    non-source dirs (node_modules, __pycache__, etc.). Each file is
+    ingested as its own KB version.
+
+    Args:
+        directory: Path to the directory to walk.
+        extensions: File extensions to include (e.g. [".py", ".ts"]).
+                    Defaults to all extensions in EXTENSION_CONTENT_TYPE.
+        notes: Optional annotation applied to every version created.
+
+    Returns:
+        List of KBVersion objects, one per ingested file.
+    """
+    root = Path(directory).expanduser().resolve()
+    if not root.is_dir():
+        raise ValueError(f"{directory!r} is not a directory")
+
+    allowed = set(extensions or EXTENSION_CONTENT_TYPE.keys())
+    files = [
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in allowed
+        and not any(part.startswith(".") or part in _SKIP_DIRS for part in path.parts)
+    ]
+
+    if not files:
+        raise ValueError(f"No supported files found in {directory!r}")
+
+    return [ingest(str(f), notes=notes) for f in sorted(files)]

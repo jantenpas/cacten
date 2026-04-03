@@ -43,12 +43,23 @@ def serve(
 
 @app.command()
 def ingest(
-    source: Annotated[str, typer.Argument(help="File path (.md, .pdf) or URL to ingest.")],
-    notes: Annotated[str | None, typer.Option("--notes", "-n", help="Optional annotation.")] = None,
+    sources: Annotated[
+        list[str], typer.Argument(help="File paths, directories, or URLs to ingest.")
+    ],
+    notes: Annotated[
+        str | None, typer.Option("--notes", "-n", help="Optional annotation.")
+    ] = None,
+    ext: Annotated[
+        str | None,
+        typer.Option("--ext", help="Comma-separated extensions to filter (e.g. --ext .py,.ts,.md)."),
+    ] = None,
 ) -> None:
-    """Ingest a document into the personal knowledge base."""
+    """Ingest one or more files, directories, or URLs into the personal knowledge base."""
+    from pathlib import Path
+
     from cacten.embeddings import check_ollama
     from cacten.pipeline import ingest as _ingest
+    from cacten.pipeline import ingest_directory
 
     typer.echo("Checking Ollama...")
     try:
@@ -57,17 +68,28 @@ def ingest(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1) from e
 
-    typer.echo(f"Ingesting: {source}")
-    try:
-        version = _ingest(source, notes=notes)
-    except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1) from e
-
-    typer.echo(
-        f"Done. KB version v{version.version_number} created "
-        f"({version.chunk_count} chunks). Now active."
-    )
+    for source in sources:
+        is_dir = not source.startswith("http") and Path(source).expanduser().is_dir()
+        try:
+            if is_dir:
+                typer.echo(f"Ingesting directory: {source}")
+                extensions = [e.strip() for e in ext.split(",")] if ext else None
+                versions = ingest_directory(source, extensions=extensions, notes=notes)
+                total_chunks = sum(v.chunk_count for v in versions)
+                typer.echo(
+                    f"Done. {len(versions)} files ingested "
+                    f"({total_chunks} chunks total). Last version now active."
+                )
+            else:
+                typer.echo(f"Ingesting: {source}")
+                version = _ingest(source, notes=notes)
+                typer.echo(
+                    f"Done. KB version v{version.version_number} created "
+                    f"({version.chunk_count} chunks). Now active."
+                )
+        except (ValueError, RuntimeError) as e:
+            typer.echo(f"Error ingesting {source!r}: {e}", err=True)
+            raise typer.Exit(1) from e
 
 
 # ---------------------------------------------------------------------------

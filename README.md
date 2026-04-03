@@ -29,25 +29,14 @@ ollama pull nomic-embed-text
 # 3. Ingest a document
 cacten ingest ./my-notes.md
 
-# 4. Start the MCP server
+# 4. In one terminal: start Ollama
+ollama serve
+
+# 5. In a second terminal: start the MCP server
 cacten serve
 ```
 
-Add to your project's `.mcp.json` (or `~/.claude/mcp.json` for global use):
-
-```json
-{
-  "mcpServers": {
-    "cacten": {
-      "command": "cacten",
-      "args": ["serve"],
-      "transport": "stdio"
-    }
-  }
-}
-```
-
-Claude Code connects automatically on startup and calls `search_personal_kb` when your KB context is relevant.
+See [MCP Setup](#mcp-setup) below for how to wire this into Claude Code.
 
 ---
 
@@ -66,6 +55,61 @@ cacten serve
 ```
 
 Ask Claude Code something that touches your ingested content. The `--verbose` flag on `cacten retrieve` shows the exact `<cacten_context>` block Claude receives.
+
+---
+
+## MCP Setup
+
+Cacten runs as a local MCP server. You register it once and Claude Code calls it automatically on relevant queries — no manual prompting needed.
+
+### Option A — Project-scoped (recommended for per-project KBs)
+
+Add to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "cacten": {
+      "command": "cacten",
+      "args": ["serve"],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+### Option B — Global (works across all projects)
+
+Add to `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "cacten": {
+      "command": "cacten",
+      "args": ["serve"],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+### Claude Code CLI
+
+You can also register it directly from the terminal without editing JSON:
+
+```bash
+# Add globally
+claude mcp add cacten cacten serve
+
+# Or scoped to the current project
+claude mcp add --scope project cacten cacten serve
+
+# Verify it's registered
+claude mcp list
+```
+
+Once registered, Claude Code starts the server automatically and calls `search_personal_kb` when your KB context is relevant. No `cacten serve` needed in a separate terminal.
 
 ---
 
