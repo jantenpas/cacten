@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import typer
+
 from cacten import config, versions
 from cacten.embeddings import embed_dense, embed_sparse
 from cacten.loaders import EXTENSION_CONTENT_TYPE, load_file, load_url
@@ -94,6 +96,102 @@ def ingest(
         embedding_model=config.EMBEDDING_MODEL,
         notes=notes,
         version_id=version_id,
+    )
+    config.set_active_version_id(version.version_id)
+    return version
+
+
+def ingest_manifest(
+    project_root: str | None = None,
+    label: str | None = None,
+) -> KBVersion:
+    """Ingest all files resolved from .cacten/sources.toml as a single KB version.
+
+    If sources.toml is missing but sources-example.toml exists, bootstraps it first
+    and prints a notice. Raises FileNotFoundError if neither file exists.
+    """
+    from cacten.manifest import (
+        ManifestConfig,
+        bootstrap_manifest,
+        load_manifest,
+        manifest_path,
+        resolve_files,
+        snapshot_manifest,
+    )
+
+    config.ensure_dirs()
+
+    root = Path(project_root).expanduser().resolve() if project_root else Path.cwd()
+    mp = manifest_path(root)
+
+    if not mp.exists():
+        bootstrapped = bootstrap_manifest(root)
+        typer.echo(f"No sources.toml found. Generating from the sample file: {bootstrapped}")
+
+    manifest: ManifestConfig = load_manifest(root)
+    files = resolve_files(manifest, root)
+    if not files:
+        raise ValueError("Manifest resolved no files — check include/exclude patterns.")
+
+    snapshot_path, manifest_hash = snapshot_manifest(root)
+
+    version_id = str(uuid4())
+    ingested_at = datetime.now(tz=UTC)
+    chunks: list[Chunk] = []
+
+    for file_path in files:
+        text, content_type = load_file(file_path)
+        raw_chunks = split_by_content_type(text, content_type)
+        if not raw_chunks:
+            continue
+        source_doc_id = str(uuid4())
+        char_pos = 0
+        for i, chunk_text in enumerate(raw_chunks):
+            dense = embed_dense(chunk_text)
+            sparse_idx, sparse_val = embed_sparse(chunk_text)
+            start = text.find(chunk_text, char_pos)
+            if start == -1:
+                start = char_pos
+            end = start + len(chunk_text)
+            char_pos = end
+            chunks.append(
+                Chunk(
+                    text=chunk_text,
+                    metadata=ChunkMetadata(
+                        chunk_id=str(uuid4()),
+                        kb_version_id=version_id,
+                        source_document_id=source_doc_id,
+                        source_url=None,
+                        source_filename=file_path.name,
+                        chunk_index=i,
+                        char_offset_start=start,
+                        char_offset_end=end,
+                        ingested_at=ingested_at,
+                        content_type=content_type,
+                    ),
+                    dense_vector=dense,
+                    sparse_indices=sparse_idx,
+                    sparse_values=sparse_val,
+                )
+            )
+
+    if not chunks:
+        raise ValueError("No text could be extracted from any resolved files.")
+
+    store = QdrantVectorStore()
+    store.add(chunks)
+
+    version = versions.create_version(
+        document_count=len(files),
+        chunk_count=len(chunks),
+        embedding_model=config.EMBEDDING_MODEL,
+        notes=label,
+        version_id=version_id,
+        manifest_path=str(mp),
+        manifest_snapshot_path=str(snapshot_path),
+        manifest_hash=manifest_hash,
+        manifest_version=manifest.version,
+        resolved_files=[str(f) for f in files],
     )
     config.set_active_version_id(version.version_id)
     return version

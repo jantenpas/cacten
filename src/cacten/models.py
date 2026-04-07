@@ -39,3 +39,9 @@ class KBVersion(BaseModel):
     chunk_count: int
     embedding_model: str
     notes: str | None = None
+    # Manifest provenance — populated for manifest-driven ingest runs, None for ad hoc.
+    manifest_path: str | None = None
+    manifest_snapshot_path: str | None = None
+    manifest_hash: str | None = None
+    manifest_version: int | None = None
+    resolved_files: list[str] = Field(default_factory=list)

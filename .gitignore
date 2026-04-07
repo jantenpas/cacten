@@ -23,3 +23,8 @@ htmlcov/
 # Logs and data
 *.log
 ~/.cacten/
+
+# Cacten project-local manifest (keep example committed)
+.cacten/sources.toml
+.cacten/manifest-history/
+!.cacten/sources-example.toml

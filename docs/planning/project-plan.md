@@ -71,8 +71,8 @@
 
 **Tasks:**
 - [ ] Finalize `SessionLog` schema against Eval Studio input format
-- [ ] `export` command: export session logs as JSONL
-- [ ] `eval` command (or export flag): format for Eval Studio ingestion
+- [ ] `cacten evals export` command: export session logs as jt-eval-kit JSON array
+- [ ] `cacten evals` subcommand group (extensible for future `list`, `run`)
 - [ ] Document eval workflow in README
 
 ---
@@ -86,10 +86,33 @@
 - [ ] End-to-end demo script (ingest → ask → eval)
 - [ ] README polish: clear value prop, setup instructions, demo GIF or screenshot
 - [ ] Error messages and help text audit
+- [ ] Ingest performance pass: profile large-corpus ingest, identify embedding/upsert bottlenecks, and document follow-up optimizations
 - [ ] Type coverage: mypy strict passes cleanly
 - [ ] Test coverage: core ingestion and retrieval paths
 - [ ] CLAUDE.md and design docs final review
 - [ ] Git repo setup and initial push
+
+---
+
+## Planned Ingest UX
+
+Project-local manifest workflow:
+
+```bash
+cacten init
+cacten ingest --dry-run
+cacten ingest --label "post-refactor corpus refresh"
+```
+
+If `.cacten/sources.toml` is missing, `cacten ingest` should generate it from `.cacten/sources-example.toml` and print `No sources.toml found. Generating from the sample file`.
+
+Ad hoc testing workflow:
+
+```bash
+cacten ingest ./docs ./tests/test_pipeline.py
+```
+
+In the planned manifest flow, one ingest run produces one KB version, and `--label` gives that version a human-friendly note for later inspection.
 
 ---
 

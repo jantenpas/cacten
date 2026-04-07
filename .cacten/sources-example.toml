@@ -1,0 +1,23 @@
+# Cacten — example manifest
+#
+# Copy this file to .cacten/sources.toml and edit it for your project.
+# sources.toml is gitignored; this file is committed as a starter template.
+#
+# Run `cacten ingest --dry-run` to preview what will be resolved before ingesting.
+
+version = 1
+
+include = [
+  "./README.md",
+  "./docs/**/*.md",
+  "./src/**/*.py",
+]
+
+exclude = [
+  "**/.git/**",
+  "**/.venv/**",
+  "**/node_modules/**",
+  "**/__pycache__/**",
+  "**/.mypy_cache/**",
+  "**/.pytest_cache/**",
+]

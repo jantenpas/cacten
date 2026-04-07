@@ -51,13 +51,13 @@ def test_ingest_success(tmp_path: Path) -> None:
     mock_ingest.assert_called_once_with("notes.md", notes=None)
 
 
-def test_ingest_with_notes(tmp_path: Path) -> None:
+def test_ingest_with_label(tmp_path: Path) -> None:
     version = _make_version()
     with (
         patch("cacten.embeddings.check_ollama"),
         patch("cacten.pipeline.ingest", return_value=version) as mock_ingest,
     ):
-        runner.invoke(app, ["ingest", "notes.md", "--notes", "my annotation"])
+        runner.invoke(app, ["ingest", "notes.md", "--label", "my annotation"])
 
     mock_ingest.assert_called_once_with("notes.md", notes="my annotation")
 
@@ -296,3 +296,128 @@ def test_versions_delete_not_found(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# cacten init
+# ---------------------------------------------------------------------------
+
+
+def test_init_creates_manifest(tmp_path: Path) -> None:
+    cacten_dir = tmp_path / ".cacten"
+    cacten_dir.mkdir()
+    (cacten_dir / "sources-example.toml").write_text('version = 1\ninclude = ["*.md"]\n')
+
+    with patch("pathlib.Path.cwd", return_value=tmp_path):
+        result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 0
+    assert (cacten_dir / "sources.toml").exists()
+    assert "Created" in result.output
+
+
+def test_init_does_not_overwrite_existing(tmp_path: Path) -> None:
+    cacten_dir = tmp_path / ".cacten"
+    cacten_dir.mkdir()
+    existing = cacten_dir / "sources.toml"
+    existing.write_text("original")
+
+    with patch("pathlib.Path.cwd", return_value=tmp_path):
+        result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 0
+    assert existing.read_text() == "original"
+    assert "already exists" in result.output
+
+
+def test_init_fails_without_example(tmp_path: Path) -> None:
+    (tmp_path / ".cacten").mkdir()
+
+    with patch("pathlib.Path.cwd", return_value=tmp_path):
+        result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# cacten ingest (manifest path)
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_manifest_no_args(tmp_path: Path) -> None:
+    version = _make_version(version_number=2, chunk_count=42)
+    version = version.model_copy(update={"document_count": 5})
+
+    with (
+        patch("cacten.embeddings.check_ollama"),
+        patch("cacten.pipeline.ingest_manifest", return_value=version) as mock_manifest,
+        patch("cacten.manifest.manifest_path", return_value=tmp_path / ".cacten" / "sources.toml"),
+        patch("pathlib.Path.cwd", return_value=tmp_path),
+    ):
+        result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 0
+    assert "v2" in result.output
+    assert "42" in result.output
+    mock_manifest.assert_called_once_with(label=None)
+
+
+def test_ingest_manifest_with_label(tmp_path: Path) -> None:
+    version = _make_version()
+
+    with (
+        patch("cacten.embeddings.check_ollama"),
+        patch("cacten.pipeline.ingest_manifest", return_value=version) as mock_manifest,
+        patch("cacten.manifest.manifest_path", return_value=tmp_path / ".cacten" / "sources.toml"),
+        patch("pathlib.Path.cwd", return_value=tmp_path),
+    ):
+        runner.invoke(app, ["ingest", "--label", "post-refactor"])
+
+    mock_manifest.assert_called_once_with(label="post-refactor")
+
+
+def test_ingest_manifest_error(tmp_path: Path) -> None:
+    with (
+        patch("cacten.embeddings.check_ollama"),
+        patch("cacten.pipeline.ingest_manifest", side_effect=FileNotFoundError("no manifest")),
+        patch("pathlib.Path.cwd", return_value=tmp_path),
+    ):
+        result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 1
+    assert "no manifest" in result.output
+
+
+# ---------------------------------------------------------------------------
+# cacten ingest --dry-run
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_dry_run(tmp_path: Path) -> None:
+    from cacten.manifest import ManifestConfig
+
+    manifest = ManifestConfig(version=1, include=["*.md"])
+    files = [tmp_path / "a.md", tmp_path / "b.md"]
+
+    with (
+        patch("cacten.manifest.load_manifest", return_value=manifest),
+        patch("cacten.manifest.resolve_files", return_value=files),
+        patch("cacten.manifest.manifest_path", return_value=tmp_path / ".cacten" / "sources.toml"),
+        patch("pathlib.Path.cwd", return_value=tmp_path),
+    ):
+        result = runner.invoke(app, ["ingest", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Resolved files: 2" in result.output
+
+
+def test_ingest_dry_run_missing_manifest(tmp_path: Path) -> None:
+    with (
+        patch("cacten.manifest.load_manifest", side_effect=FileNotFoundError),
+        patch("cacten.manifest.manifest_path", return_value=tmp_path / ".cacten" / "sources.toml"),
+        patch("pathlib.Path.cwd", return_value=tmp_path),
+    ):
+        result = runner.invoke(app, ["ingest", "--dry-run"])
+
+    assert result.exit_code == 1

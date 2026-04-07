@@ -32,6 +32,11 @@ def create_version(
     embedding_model: str,
     notes: str | None = None,
     version_id: str | None = None,
+    manifest_path: str | None = None,
+    manifest_snapshot_path: str | None = None,
+    manifest_hash: str | None = None,
+    manifest_version: int | None = None,
+    resolved_files: list[str] | None = None,
 ) -> KBVersion:
     versions = _load()
     next_number = max((v.version_number for v in versions), default=0) + 1
@@ -43,6 +48,11 @@ def create_version(
         chunk_count=chunk_count,
         embedding_model=embedding_model,
         notes=notes,
+        manifest_path=manifest_path,
+        manifest_snapshot_path=manifest_snapshot_path,
+        manifest_hash=manifest_hash,
+        manifest_version=manifest_version,
+        resolved_files=resolved_files or [],
     )
     versions.append(version)
     _save(versions)

@@ -10,13 +10,16 @@ Local-first RAG middleware for Claude Code. Ingest your own documents into a ver
 
 ## Why
 
-- **Local-first** — no cloud dependency, no API keys, all data in `~/.cacten/`
+- **Local-first** — no cloud dependency, no API keys; KB data lives in `~/.cacten/`, project manifest files in `.cacten/`
 - **Versioned KB** — every ingestion creates a new snapshot; roll back or compare across versions
 - **MCP-native** — Claude Code calls `search_personal_kb` on demand; Cacten retrieves, Claude generates
+- **Project-local manifest** — define your corpus once in `.cacten/sources.toml`, ingest with one command
 
 ---
 
 ## Quickstart
+
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com/)
 
 ```bash
 # 1. Install
@@ -26,43 +29,72 @@ uv tool install .
 # 2. Pull the embedding model
 ollama pull nomic-embed-text
 
-# 3. Ingest a document
-cacten ingest ./my-notes.md
+# 3. Initialize a manifest for your project
+#    (requires .cacten/sources-example.toml — this repo includes one;
+#     for a new project, create that file first using the format below)
+cacten init
 
-# 4. In one terminal: start Ollama
-ollama serve
+# 4. Preview what will be ingested
+cacten ingest --dry-run
 
-# 5. In a second terminal: start the MCP server
-cacten serve
+# 5. Ingest your corpus
+cacten ingest --label "initial ingest"
 ```
 
-See [MCP Setup](#mcp-setup) below for how to wire this into Claude Code.
+See [MCP Setup](#mcp-setup) to wire Cacten into Claude Code.
 
 ---
 
-## Example workflow
+## Ingestion workflow
+
+### Manifest-based (recommended)
+
+Define your corpus once, re-run with one command.
 
 ```bash
-# Ingest your architecture decisions and coding notes
-cacten ingest ./docs/architecture.md --notes "system design v2"
-cacten ingest ./docs/style-guide.md
-
-# Smoke test retrieval before starting a session
-cacten retrieve "preferred error handling pattern" --verbose
-
-# Start the server — Claude Code picks it up via .mcp.json
-cacten serve
+cacten init                                    # creates .cacten/sources.toml from the example
+cacten ingest --dry-run                        # preview resolved files without ingesting
+cacten ingest                                  # ingest all resolved files as one KB version
+cacten ingest --label "post-refactor refresh"  # same, with a human-friendly label
 ```
 
-Ask Claude Code something that touches your ingested content. The `--verbose` flag on `cacten retrieve` shows the exact `<cacten_context>` block Claude receives.
+`sources.toml` uses glob patterns:
+
+```toml
+version = 1
+
+include = [
+  "./README.md",
+  "./docs/**/*.md",
+  "./src/**/*.py",
+]
+
+exclude = [
+  "**/.venv/**",
+  "**/__pycache__/**",
+]
+```
+
+**One ingest run = one KB version.** Every run snapshots the manifest to `.cacten/manifest-history/` for provenance.
+
+`.cacten/sources.toml` is gitignored. Commit `.cacten/sources-example.toml` as the project template — `cacten init` copies it.
+
+### Ad hoc (one-off files, URLs, directories)
+
+```bash
+cacten ingest ./my-notes.md
+cacten ingest ./paper.pdf
+cacten ingest https://example.com/some-page
+cacten ingest ./docs/
+```
 
 ---
 
 ## MCP Setup
 
-Cacten runs as a local MCP server. You register it once and Claude Code calls it automatically on relevant queries — no manual prompting needed.
+Cacten runs as a local MCP server. Register it once and Claude Code calls it automatically on relevant queries.
 
-### Option A — Project-scoped (recommended for per-project KBs)
+### Option A — Project-scoped (recommended)
 
 Add to `.mcp.json` in your project root:
 
@@ -94,64 +126,63 @@ Add to `~/.claude/mcp.json`:
 }
 ```
 
-### Claude Code CLI
-
-You can also register it directly from the terminal without editing JSON:
+### Option C — Claude Code CLI
 
 ```bash
-# Add globally
-claude mcp add cacten cacten serve
-
-# Or scoped to the current project
-claude mcp add --scope project cacten cacten serve
-
-# Verify it's registered
-claude mcp list
+claude mcp add cacten cacten serve              # global
+claude mcp add --scope project cacten cacten serve  # project-scoped
+claude mcp list                                 # verify
 ```
 
-Once registered, Claude Code starts the server automatically and calls `search_personal_kb` when your KB context is relevant. No `cacten serve` needed in a separate terminal.
-
----
-
-## Prerequisites
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-- [Ollama](https://ollama.com/) running locally (`ollama serve`)
+Once registered, Claude Code starts the server automatically and calls `search_personal_kb` when your KB context is relevant.
 
 ---
 
 ## CLI reference
 
-### Ingest
+### `cacten init`
+
+Initialize `.cacten/sources.toml` for this project from the example template. Requires `.cacten/sources-example.toml` to exist — create that first if you're setting up a new project (see [manifest format](#ingestion-workflow) above).
 
 ```bash
-cacten ingest ./path/to/doc.md
-cacten ingest ./paper.pdf
-cacten ingest https://example.com/some-page
-cacten ingest ./doc.md --notes "Q1 architecture decisions"
+cacten init
 ```
 
-### Serve
+### `cacten ingest`
 
 ```bash
-cacten serve
-cacten serve --passthrough   # bypass RAG, return empty context for all queries
+cacten ingest                                  # manifest-based: reads .cacten/sources.toml
+cacten ingest --dry-run                        # preview resolved files, no KB write
+cacten ingest --label "my label"               # manifest ingest with a version label
+cacten ingest ./doc.md ./paper.pdf             # ad hoc: specific files
+cacten ingest https://example.com/page         # ad hoc: URL
+cacten ingest ./docs/ --ext .md,.py            # ad hoc: directory with extension filter
 ```
 
-### Retrieve (debug / smoke test)
+### `cacten serve`
 
 ```bash
-cacten retrieve "how do we handle auth?"
+cacten serve                    # start MCP server (stdio transport)
+cacten serve --passthrough      # bypass RAG, return empty context for all queries
+```
+
+### `cacten retrieve`
+
+Smoke-test retrieval without starting a full MCP session.
+
+```bash
+cacten retrieve "preferred error handling pattern"
 cacten retrieve "deployment strategy" --top-k 5 --verbose
 ```
 
-### Manage KB versions
+`--verbose` prints the full `<cacten_context>` block Claude would receive.
+
+### `cacten versions`
 
 ```bash
 cacten versions list
 cacten versions set-active <version-id-prefix>
-cacten versions delete <version-id-prefix>
+cacten versions delete <version-id-prefix> --yes
 ```
 
 Every ingestion creates a new version and activates it automatically.
@@ -160,16 +191,19 @@ Every ingestion creates a new version and activates it automatically.
 
 ## Data storage
 
-All data lives in `~/.cacten/`:
-
 ```
 ~/.cacten/
-├── config.json          # active kb_version_id
+├── config.json             # active kb_version_id
 ├── kb/
-│   ├── versions.json    # version registry
-│   └── qdrant/          # Qdrant local storage (no Docker needed)
+│   ├── versions.json       # version registry with manifest provenance
+│   └── qdrant/             # Qdrant local storage (no Docker needed)
 └── logs/
-    └── sessions/        # structured session logs for later eval export
+    └── sessions/           # structured session logs for eval export
+
+.cacten/                    # project-local (gitignored except the example)
+├── sources.toml            # live manifest — gitignored
+├── sources-example.toml    # committed template
+└── manifest-history/       # immutable snapshots of each ingest run
 ```
 
 ---
@@ -178,7 +212,7 @@ All data lives in `~/.cacten/`:
 
 ```bash
 uv run pytest                                        # run tests
-uv run pytest --cov --cov-report=term-missing        # run tests with coverage
+uv run pytest --cov --cov-report=term-missing        # with coverage
 uv run ruff check src/                               # lint
 uv run mypy src/                                     # type check
 ```
@@ -187,6 +221,6 @@ uv run mypy src/                                     # type check
 
 ## Roadmap
 
-- `cacten export` — session log export for RAGAS eval pipelines
+- `cacten evals export` — session log export for RAGAS eval pipelines
 - Reranker (cross-encoder), HyDE query expansion, contextual retrieval
 - VS Code plugin, GitHub repo ingestion

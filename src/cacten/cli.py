@@ -1,4 +1,4 @@
-"""Cacten CLI — ingest, retrieve, versions."""
+"""Cacten CLI — init, ingest, retrieve, versions."""
 
 from __future__ import annotations
 
@@ -14,6 +14,43 @@ app = typer.Typer(
 
 versions_app = typer.Typer(help="Manage KB versions.")
 app.add_typer(versions_app, name="versions")
+
+
+# ---------------------------------------------------------------------------
+# cacten init
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def init() -> None:
+    """Initialize .cacten/sources.toml for this project from the example template."""
+    from pathlib import Path
+
+    from cacten.manifest import (
+        bootstrap_manifest,
+        example_manifest_path,
+        manifest_path,
+    )
+
+    root = Path.cwd()
+    dest = manifest_path(root)
+
+    if dest.exists():
+        typer.echo(f"Manifest already exists: {dest}")
+        raise typer.Exit(0)
+
+    try:
+        created = bootstrap_manifest(root)
+    except FileNotFoundError:
+        example = example_manifest_path(root)
+        typer.echo(
+            f"Error: {example} not found. "
+            "Add a .cacten/sources-example.toml to this project first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(f"Created {created}  — edit it, then run `cacten ingest`.")
 
 
 # ---------------------------------------------------------------------------
@@ -44,22 +81,49 @@ def serve(
 @app.command()
 def ingest(
     sources: Annotated[
-        list[str], typer.Argument(help="File paths, directories, or URLs to ingest.")
-    ],
-    notes: Annotated[
-        str | None, typer.Option("--notes", "-n", help="Optional annotation.")
+        list[str] | None,
+        typer.Argument(help="File paths, directories, or URLs. Omit to use .cacten/sources.toml."),
     ] = None,
+    label: Annotated[
+        str | None,
+        typer.Option("--label", "-l", help="Human-friendly label for this KB version."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Resolve and preview files without ingesting."),
+    ] = False,
     ext: Annotated[
         str | None,
         typer.Option("--ext", help="Comma-separated extensions to filter (e.g. --ext .py,.ts,.md)."),
     ] = None,
 ) -> None:
-    """Ingest one or more files, directories, or URLs into the personal knowledge base."""
+    """Ingest files into the personal knowledge base.
+
+    With no arguments, reads .cacten/sources.toml and ingests all resolved files
+    as a single KB version. Pass paths or URLs for ad hoc ingestion.
+    """
     from pathlib import Path
 
     from cacten.embeddings import check_ollama
+    from cacten.manifest import load_manifest, manifest_path, resolve_files
     from cacten.pipeline import ingest as _ingest
-    from cacten.pipeline import ingest_directory
+    from cacten.pipeline import ingest_directory, ingest_manifest
+
+    # --dry-run is only supported for manifest-based ingest
+    if dry_run:
+        root = Path.cwd()
+        try:
+            manifest = load_manifest(root)
+        except FileNotFoundError:
+            typer.echo(f"No manifest found at {manifest_path(root)}", err=True)
+            raise typer.Exit(1)
+        files = resolve_files(manifest, root)
+        typer.echo(f"Manifest: {manifest_path(root)}")
+        typer.echo(f"Resolved files: {len(files)}")
+        for f in files:
+            display = f.relative_to(root) if f.is_relative_to(root) else f
+            typer.echo(f"  {display}")
+        return
 
     typer.echo("Checking Ollama...")
     try:
@@ -68,21 +132,35 @@ def ingest(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1) from e
 
+    # Manifest-based ingest (no explicit sources provided)
+    if not sources:
+        try:
+            version = ingest_manifest(label=label)
+        except (FileNotFoundError, ValueError) as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1) from e
+        typer.echo(f"Loaded manifest: {manifest_path(Path.cwd())}")
+        typer.echo(f"Created KB version v{version.version_number} (active)")
+        typer.echo(f"Files ingested: {version.document_count}")
+        typer.echo(f"Chunks created: {version.chunk_count}")
+        return
+
+    # Ad hoc ingest (explicit paths or URLs)
     for source in sources:
         is_dir = not source.startswith("http") and Path(source).expanduser().is_dir()
         try:
             if is_dir:
                 typer.echo(f"Ingesting directory: {source}")
                 extensions = [e.strip() for e in ext.split(",")] if ext else None
-                versions = ingest_directory(source, extensions=extensions, notes=notes)
-                total_chunks = sum(v.chunk_count for v in versions)
+                dir_versions = ingest_directory(source, extensions=extensions, notes=label)
+                total_chunks = sum(v.chunk_count for v in dir_versions)
                 typer.echo(
-                    f"Done. {len(versions)} files ingested "
+                    f"Done. {len(dir_versions)} files ingested "
                     f"({total_chunks} chunks total). Last version now active."
                 )
             else:
                 typer.echo(f"Ingesting: {source}")
-                version = _ingest(source, notes=notes)
+                version = _ingest(source, notes=label)
                 typer.echo(
                     f"Done. KB version v{version.version_number} created "
                     f"({version.chunk_count} chunks). Now active."

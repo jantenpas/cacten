@@ -69,7 +69,7 @@
 | # | Task | Status | Notes |
 |---|---|---|---|
 | E-1 | Resolve Q7: validate SessionLog schema against Eval Studio ingestion contract | ⬜ Not started | Must be done before E-2 |
-| E-2 | `cacten export` command (session logs → JSONL) | ⬜ Not started | RAGAS-compatible format |
+| E-2 | `cacten evals export` command (session logs → JSON array for jt-eval-kit) | ⬜ Not started | `--output`, `--since`, `--kb-version`, `--limit` flags |
 | E-3 | Eval Studio ingestion smoke test | ⬜ Not started | End-to-end validation |
 | E-4 | Document eval workflow in README | ⬜ Not started | ingest → ask → export → eval |
 
