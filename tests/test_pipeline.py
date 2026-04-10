@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -17,8 +18,12 @@ FAKE_SPARSE = ([1, 2], [0.5, 0.5])
 
 
 def _patch_embeddings() -> tuple[Any, Any]:
-    # Returns two patch context managers for embed_dense and embed_sparse
-    dense = patch("cacten.pipeline.embed_dense", return_value=FAKE_DENSE)
+    # Returns patch context managers for both dense embedding paths and sparse embedding.
+    dense = patch.multiple(
+        "cacten.pipeline",
+        embed_dense=MagicMock(return_value=FAKE_DENSE),
+        embed_dense_many=MagicMock(side_effect=lambda texts: [FAKE_DENSE for _ in texts]),
+    )
     sparse = patch("cacten.pipeline.embed_sparse", return_value=FAKE_SPARSE)
     return dense, sparse
 
@@ -234,6 +239,7 @@ def test_ingest_manifest_happy_path(tmp_path: Path) -> None:
 
     manifest = ManifestConfig(version=1, include=["*.md"])
     versions_file = tmp_path / "versions.json"
+    version_files_dir = tmp_path / "version-files"
     config_file = tmp_path / "config.json"
     mock_store = MagicMock()
     dense_patch, sparse_patch = _patch_embeddings()
@@ -246,6 +252,7 @@ def test_ingest_manifest_happy_path(tmp_path: Path) -> None:
         patch("cacten.manifest.snapshot_manifest", return_value=(tmp_path / "snap.toml", "abc123")),
         patch("cacten.pipeline.QdrantVectorStore", return_value=mock_store),
         patch.object(versions_module, "VERSIONS_FILE", versions_file),
+        patch.object(versions_module, "VERSION_FILES_DIR", version_files_dir),
         patch.object(cfg_module, "CONFIG_FILE", config_file),
         dense_patch,
         sparse_patch,
@@ -267,6 +274,7 @@ def test_ingest_manifest_bootstraps_when_missing(tmp_path: Path) -> None:
 
     manifest = ManifestConfig(version=1, include=["*.md"])
     versions_file = tmp_path / "versions.json"
+    version_files_dir = tmp_path / "version-files"
     config_file = tmp_path / "config.json"
     mock_store = MagicMock()
     dense_patch, sparse_patch = _patch_embeddings()
@@ -283,6 +291,7 @@ def test_ingest_manifest_bootstraps_when_missing(tmp_path: Path) -> None:
         patch("cacten.manifest.snapshot_manifest", return_value=(tmp_path / "snap.toml", "abc")),
         patch("cacten.pipeline.QdrantVectorStore", return_value=mock_store),
         patch.object(versions_module, "VERSIONS_FILE", versions_file),
+        patch.object(versions_module, "VERSION_FILES_DIR", version_files_dir),
         patch.object(cfg_module, "CONFIG_FILE", config_file),
         dense_patch,
         sparse_patch,
@@ -322,6 +331,7 @@ def test_ingest_manifest_all_empty_chunks_raises(tmp_path: Path) -> None:
     manifest_toml.write_text("version = 1\ninclude = ['*.md']\n")
 
     manifest = ManifestConfig(version=1, include=["*.md"])
+    version_files_dir = tmp_path / "version-files"
 
     with (
         patch("cacten.config.ensure_dirs"),
@@ -329,7 +339,86 @@ def test_ingest_manifest_all_empty_chunks_raises(tmp_path: Path) -> None:
         patch("cacten.manifest.load_manifest", return_value=manifest),
         patch("cacten.manifest.resolve_files", return_value=[md]),
         patch("cacten.manifest.snapshot_manifest", return_value=(tmp_path / "snap.toml", "abc")),
+        patch("cacten.pipeline.QdrantVectorStore"),
+        patch.object(versions_module, "VERSION_FILES_DIR", version_files_dir),
         patch("cacten.pipeline.split_by_content_type", return_value=[]),
         pytest.raises(ValueError, match="No text could be extracted"),
     ):
         ingest_manifest()
+
+
+def test_ingest_manifest_reuses_unchanged_files(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from cacten.manifest import ManifestConfig
+    from cacten.models import Chunk, ChunkMetadata, VersionFileRecord
+
+    md = tmp_path / "doc.md"
+    md.write_text("# Hello\n\nManifest ingestion test content.")
+
+    cacten_dir = tmp_path / ".cacten"
+    cacten_dir.mkdir()
+    manifest_toml = cacten_dir / "sources.toml"
+    manifest_toml.write_text("version = 1\ninclude = ['*.md']\n")
+
+    manifest = ManifestConfig(version=1, include=["*.md"])
+    versions_file = tmp_path / "versions.json"
+    version_files_dir = tmp_path / "version-files"
+    config_file = tmp_path / "config.json"
+    mock_store = MagicMock()
+
+    previous_chunk = Chunk(
+        text="reused chunk",
+        metadata=ChunkMetadata(
+            chunk_id=str(uuid4()),
+            kb_version_id="old-version",
+            source_document_id=str(uuid4()),
+            source_filename=md.name,
+            source_path=str(md.resolve()),
+            source_file_hash="oldhash",
+            chunk_index=0,
+            char_offset_start=0,
+            char_offset_end=11,
+            ingested_at=datetime.now(tz=UTC),
+            content_type="markdown",
+        ),
+        dense_vector=FAKE_DENSE,
+        sparse_indices=FAKE_SPARSE[0],
+        sparse_values=FAKE_SPARSE[1],
+    )
+    previous_record = VersionFileRecord(
+        path=str(md.resolve()),
+        file_hash="sha256-match",
+        file_size=md.stat().st_size,
+        content_type="markdown",
+        embedding_model=cfg_module.EMBEDDING_MODEL,
+        sparse_encoder_version=cfg_module.SPARSE_ENCODER_VERSION,
+        chunk_profile="default",
+        chunk_count=1,
+        chunk_ids=[previous_chunk.metadata.chunk_id],
+    )
+
+    with (
+        patch("cacten.config.ensure_dirs"),
+        patch("cacten.manifest.manifest_path", return_value=manifest_toml),
+        patch("cacten.manifest.load_manifest", return_value=manifest),
+        patch("cacten.manifest.resolve_files", return_value=[md.resolve()]),
+        patch("cacten.manifest.snapshot_manifest", return_value=(tmp_path / "snap.toml", "abc123")),
+        patch("cacten.pipeline._hash_file", return_value="sha256-match"),
+        patch.object(cfg_module, "CONFIG_FILE", config_file),
+        patch.object(versions_module, "VERSIONS_FILE", versions_file),
+        patch.object(versions_module, "VERSION_FILES_DIR", version_files_dir),
+        patch.object(cfg_module, "get_active_version_id", return_value="old-version"),
+        patch("cacten.versions.load_version_files", return_value=[previous_record]),
+        patch("cacten.pipeline.embed_dense_many") as mock_embed_many,
+        patch("cacten.pipeline.embed_sparse") as mock_embed_sparse,
+        patch("cacten.pipeline.QdrantVectorStore", return_value=mock_store),
+    ):
+        mock_store.get_chunks.return_value = [previous_chunk]
+        version = ingest_manifest(label="incremental")
+
+    assert version.document_count == 1
+    assert version.chunk_count == 1
+    mock_store.get_chunks.assert_called_once_with([previous_chunk.metadata.chunk_id])
+    mock_embed_many.assert_not_called()
+    mock_embed_sparse.assert_not_called()

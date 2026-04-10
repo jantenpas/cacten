@@ -39,11 +39,14 @@ def test_set_active_updates_existing(tmp_path: Path) -> None:
 
 def test_ensure_dirs(tmp_path: Path) -> None:
     qdrant = tmp_path / "qdrant"
+    version_files = tmp_path / "version-files"
     logs = tmp_path / "logs"
     with (
         patch.object(config, "QDRANT_PATH", qdrant),
+        patch.object(config, "VERSION_FILES_DIR", version_files),
         patch.object(config, "LOGS_DIR", logs),
     ):
         config.ensure_dirs()
     assert qdrant.exists()
+    assert version_files.exists()
     assert logs.exists()

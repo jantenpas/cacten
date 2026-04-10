@@ -64,7 +64,24 @@
 
 ---
 
-## Phase 3 — Eval Integration (Week 4: Apr 6–9)
+## Phase 3 — Polish (Apr 6–10)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| P-1 | End-to-end demo script (ingest → serve → ask → export) | ⬜ Not started | |
+| P-2 | README polish (value prop, setup, prerequisites, demo) | ⬜ Not started | Ollama + Cacten install steps |
+| P-3 | CLI help text audit (all commands) | ⬜ Not started | |
+| P-4 | Ingest performance pass | ✅ Done | Profiled large-corpus ingest; Ollama embedding is the main bottleneck. Batched embedding + streamed upserts landed, and follow-up optimizations are documented. |
+| P-5 | Incremental ingest | ✅ Done | File hashes, per-version file manifests, unchanged-file reuse, and sparse encoder version invalidation implemented. |
+| P-6 | Cross-encoder reranker | ✅ Done | FastEmbed/ONNX reranker integrated after hybrid retrieval with fallback behavior. |
+| P-7 | mypy strict pass — clean across all modules | ✅ Done | `uv run mypy src` passes cleanly. |
+| P-8 | Final test coverage pass | ✅ Done | `uv run pytest` passes; core ingestion, retrieval, rerank, versions, and store paths covered. |
+| P-9 | Design docs final review | ⬜ Not started | |
+| P-10 | Git repo init + initial push | ⬜ Not started | |
+
+---
+
+## Phase 4 — Eval Integration (Apr 13–17)
 
 | # | Task | Status | Notes |
 |---|---|---|---|
@@ -75,25 +92,11 @@
 
 ---
 
-## Phase 4 — Polish (Apr 9–11)
-
-| # | Task | Status | Notes |
-|---|---|---|---|
-| P-1 | End-to-end demo script (ingest → serve → ask → export) | ⬜ Not started | |
-| P-2 | README polish (value prop, setup, prerequisites, demo) | ⬜ Not started | Ollama + Cacten install steps |
-| P-3 | CLI help text audit (all commands) | ⬜ Not started | |
-| P-4 | mypy strict pass — clean across all modules | ⬜ Not started | |
-| P-5 | Final test coverage pass | ⬜ Not started | Core ingestion + retrieval paths |
-| P-6 | Design docs final review | ⬜ Not started | |
-| P-7 | Git repo init + initial push | ⬜ Not started | |
-
----
-
 ## Backlog (Post-v1)
 
 | # | Task | Notes |
 |---|---|---|
-| BL-1 | Reranker (cross-encoder) | BGE-Reranker-v2-m3 (local) or Cohere Rerank (API) — highest-ROI quality improvement after hybrid search |
+| BL-1 | Reranker quality tuning | FastEmbed/ONNX reranker is implemented; tune candidate count/model choice with evals. |
 | BL-2 | Contextual Retrieval (Anthropic, 2025) | LLM-prepended context summaries per chunk before embedding — one of the highest-ROI v2 upgrades |
 | BL-3 | HyDE query expansion | Generate hypothetical answer, embed it, use for retrieval — strong fit for short/vague dev queries |
 | BL-4 | Content-type chunking routing | PDFs → page-level, code → function-aware, markdown → structure-aware |

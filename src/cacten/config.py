@@ -7,16 +7,23 @@ CACTEN_DIR = Path.home() / ".cacten"
 KB_DIR = CACTEN_DIR / "kb"
 QDRANT_PATH = KB_DIR / "qdrant"
 VERSIONS_FILE = KB_DIR / "versions.json"
+VERSION_FILES_DIR = KB_DIR / "version-files"
 CONFIG_FILE = CACTEN_DIR / "config.json"
 LOGS_DIR = CACTEN_DIR / "logs" / "sessions"
 
 COLLECTION_NAME = "personal_kb"
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIM = 768
+SPARSE_ENCODER_VERSION = 2
+RERANK_ENABLED = True
+RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"
+RERANK_CANDIDATES = 50
+RERANK_MAX_CHARS = 4000
 
 
 def ensure_dirs() -> None:
     QDRANT_PATH.mkdir(parents=True, exist_ok=True)
+    VERSION_FILES_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 

@@ -14,6 +14,7 @@ Local-first RAG middleware for Claude Code. Ingest your own documents into a ver
 - **Versioned KB** — every ingestion creates a new snapshot; roll back or compare across versions
 - **MCP-native** — Claude Code calls `search_personal_kb` on demand; Cacten retrieves, Claude generates
 - **Project-local manifest** — define your corpus once in `.cacten/sources.toml`, ingest with one command
+- **Cacten Test 2248669** - Because it sounds like Cactus, and Cactus' are really cool! 
 
 ---
 
@@ -30,8 +31,6 @@ uv tool install .
 ollama pull nomic-embed-text
 
 # 3. Initialize a manifest for your project
-#    (requires .cacten/sources-example.toml — this repo includes one;
-#     for a new project, create that file first using the format below)
 cacten init
 
 # 4. Preview what will be ingested
@@ -142,7 +141,7 @@ Once registered, Claude Code starts the server automatically and calls `search_p
 
 ### `cacten init`
 
-Initialize `.cacten/sources.toml` for this project from the example template. Requires `.cacten/sources-example.toml` to exist — create that first if you're setting up a new project (see [manifest format](#ingestion-workflow) above).
+Initialize `.cacten/sources.toml` for this project from the example template.
 
 ```bash
 cacten init
@@ -222,5 +221,5 @@ uv run mypy src/                                     # type check
 ## Roadmap
 
 - `cacten evals export` — session log export for RAGAS eval pipelines
-- Reranker (cross-encoder), HyDE query expansion, contextual retrieval
+- Reranker (FastEmbed/ONNX cross-encoder), HyDE query expansion, contextual retrieval
 - VS Code plugin, GitHub repo ingestion

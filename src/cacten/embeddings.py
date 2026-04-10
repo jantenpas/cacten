@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+from collections.abc import Sequence
+
 import ollama
 
 from cacten.config import EMBEDDING_MODEL
@@ -17,6 +21,20 @@ def embed_dense(text: str) -> list[float]:
         ) from exc
     embedding: list[float] = response["embedding"]
     return embedding
+
+
+def embed_dense_many(texts: Sequence[str]) -> list[list[float]]:
+    """Generate dense embeddings for multiple texts in one Ollama request."""
+    if not texts:
+        return []
+    try:
+        response = ollama.embed(model=EMBEDDING_MODEL, input=list(texts))
+    except Exception as exc:
+        raise RuntimeError(
+            f"Ollama unreachable — is `ollama serve` running? ({exc})"
+        ) from exc
+    embeddings = [list(embedding) for embedding in response["embeddings"]]
+    return embeddings
 
 
 def check_ollama() -> None:
@@ -37,8 +55,19 @@ class BM25Encoder:
     This is a v1 approximation — SPLADE or proper BM25 with fixed vocab is a v2 upgrade.
     """
 
+    _TOKEN_RE = re.compile(r"[a-z0-9_]+")
+    _HASH_SIZE = 2**24
+
+    def tokenize(self, text: str) -> list[str]:
+        """Normalize text into sparse-retrieval tokens.
+
+        This strips markdown punctuation and preserves identifier-like tokens
+        such as numbers and underscore-separated names.
+        """
+        return self._TOKEN_RE.findall(text.lower())
+
     def encode(self, text: str) -> tuple[list[int], list[float]]:
-        tokens = text.lower().split()
+        tokens = self.tokenize(text)
         if not tokens:
             return [], []
 
@@ -47,10 +76,11 @@ class BM25Encoder:
             counts[tok] = counts.get(tok, 0) + 1
 
         total = len(tokens)
-        # Use abs(hash) as a stable, collision-tolerant vocabulary index
+        # Use a deterministic hash; Python's built-in hash is randomized per process.
         term_scores: dict[int, float] = {}
         for tok, count in counts.items():
-            idx = abs(hash(tok)) % (2**24)  # keep indices manageable
+            digest = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()
+            idx = int.from_bytes(digest, byteorder="big") % self._HASH_SIZE
             tf = count / total
             term_scores[idx] = tf
 

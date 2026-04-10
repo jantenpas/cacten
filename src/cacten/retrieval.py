@@ -5,6 +5,7 @@ from __future__ import annotations
 from cacten import config
 from cacten.embeddings import embed_dense, embed_sparse
 from cacten.models import ScoredChunk
+from cacten.rerank import rerank
 from cacten.store import QdrantVectorStore
 from cacten.versions import get_version
 
@@ -40,13 +41,21 @@ def retrieve(
     sparse_idx, sparse_val = embed_sparse(query)
 
     store = QdrantVectorStore()
-    return store.search(
+    candidate_k = max(top_k, config.RERANK_CANDIDATES) if config.RERANK_ENABLED else top_k
+    candidates = store.search(
         dense_vector=dense,
         sparse_indices=sparse_idx,
         sparse_values=sparse_val,
         kb_version_id=version_id,
-        top_k=top_k,
+        top_k=candidate_k,
     )
+    if not config.RERANK_ENABLED:
+        return candidates[:top_k]
+
+    try:
+        return rerank(query=query, candidates=candidates, top_k=top_k)
+    except RuntimeError:
+        return candidates[:top_k]
 
 
 def format_context_block(chunks: list[ScoredChunk]) -> str:

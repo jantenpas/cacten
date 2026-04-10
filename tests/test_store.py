@@ -84,3 +84,19 @@ def test_search_version_isolation(store: QdrantVectorStore) -> None:
     assert len(results_v2) == 1
     assert results_v1[0].chunk.metadata.kb_version_id == v1
     assert results_v2[0].chunk.metadata.kb_version_id == v2
+
+
+def test_get_chunks_by_id(store: QdrantVectorStore) -> None:
+    version_id = str(uuid4())
+    chunk_a = _make_chunk(version_id, 0)
+    chunk_b = _make_chunk(version_id, 1)
+    store.add([chunk_a, chunk_b])
+
+    results = store.get_chunks([chunk_b.metadata.chunk_id, chunk_a.metadata.chunk_id])
+
+    assert [chunk.metadata.chunk_id for chunk in results] == [
+        chunk_b.metadata.chunk_id,
+        chunk_a.metadata.chunk_id,
+    ]
+    assert results[0].text == chunk_b.text
+    assert results[1].text == chunk_a.text

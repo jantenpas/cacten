@@ -86,9 +86,11 @@
 - [ ] End-to-end demo script (ingest → ask → eval)
 - [ ] README polish: clear value prop, setup instructions, demo GIF or screenshot
 - [ ] Error messages and help text audit
-- [ ] Ingest performance pass: profile large-corpus ingest, identify embedding/upsert bottlenecks, and document follow-up optimizations
-- [ ] Type coverage: mypy strict passes cleanly
-- [ ] Test coverage: core ingestion and retrieval paths
+- [x] Ingest performance pass: profile large-corpus ingest, identify embedding/upsert bottlenecks, and document follow-up optimizations
+- [x] Incremental ingest: hash resolved files, reuse unchanged file chunks across KB versions, and only re-embed changed or new files
+- [x] Cross-encoder reranker: add second-stage reranking after hybrid retrieval; see `cross-encoder-reranker-plan.md`
+- [x] Type coverage: mypy strict passes cleanly
+- [x] Test coverage: core ingestion and retrieval paths
 - [ ] CLAUDE.md and design docs final review
 - [ ] Git repo setup and initial push
 
