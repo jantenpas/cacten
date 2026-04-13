@@ -1,63 +1,133 @@
 # Cacten
 
-Local-first RAG middleware for Claude Code. Ingest your own documents into a versioned knowledge base; Cacten runs as an MCP server and returns relevant context chunks on demand — Claude does all generation.
+Local-first RAG middleware for MCP-compatible coding agents and assistants.
 
-**Stack:** Python 3.12 · Qdrant (local) · FastMCP · `nomic-embed-text` via Ollama · Pydantic v2 · Typer · uv
+Cacten ingests your project documents into a versioned knowledge base, retrieves relevant context with hybrid search plus reranking, and serves that context over MCP. Your agent or client still does the reasoning and answer generation; Cacten focuses on retrieval quality, provenance, and local control.
 
-→ [Systems Design](docs/systems-design.md) · [Requirements](docs/requirements.md)
+[Architecture](docs/architecture.md) · [Systems Design](docs/systems-design.md) · [Requirements](docs/requirements.md)
 
 ---
 
-## Why
+## Why Cacten
 
-- **Local-first** — no cloud dependency, no API keys; KB data lives in `~/.cacten/`, project manifest files in `.cacten/`
-- **Versioned KB** — every ingestion creates a new snapshot; roll back or compare across versions
-- **MCP-native** — Claude Code calls `search_personal_kb` on demand; Cacten retrieves, Claude generates
-- **Project-local manifest** — define your corpus once in `.cacten/sources.toml`, ingest with one command
-- **Cacten Test 2248669** - Because it sounds like Cactus, and Cactus' are really cool! 
+- Local-first: knowledge-base data stays on your machine under `~/.cacten/`
+- MCP-native: any compatible MCP client can request context on demand instead of relying on copy-paste workflows
+- Versioned: every ingest creates a new KB snapshot you can inspect, switch, or delete
+- Repeatable: a project-local manifest makes corpus refreshes one command instead of a manual ritual
+- Practical quality stack: dense embeddings, sparse retrieval, DBSF fusion, and cross-encoder reranking
+
+---
+
+## What It Does Today
+
+- Ingests markdown, PDFs, source code, text files, HTML, CSS, JSON, and HTTPS URLs
+- Supports project-local manifest ingest and ad hoc ingest
+- Reuses unchanged files during repeated manifest ingests
+- Stores all chunks in a local Qdrant collection scoped by KB version
+- Exposes retrieval through a FastMCP server for any MCP-compatible client
+- Logs retrieval sessions for future eval export workflows
+
+---
+
+## How It Works
+
+```text
+files / URLs
+  → load and split by content type
+  → dense embed with Ollama
+  → sparse encode with BM25
+  → upsert into versioned local Qdrant storage
+
+agent query
+  → search_personal_kb
+  → hybrid retrieval
+  → rerank top candidates
+  → return <cacten_context>
+```
+
+If you want the short architecture summary, start with [docs/architecture.md](docs/architecture.md). If you want the fuller design reference, use [docs/systems-design.md](docs/systems-design.md).
 
 ---
 
 ## Quickstart
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com/)
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- [Ollama](https://ollama.com/)
+- an MCP-compatible client such as Claude Code
+
+### Install
 
 ```bash
-# 1. Install
-git clone <repo> && cd cacten
+git clone <repo-url>
+cd cacten
 uv tool install .
-
-# 2. Pull the embedding model
 ollama pull nomic-embed-text
+```
 
-# 3. Initialize a manifest for your project
+### Initialize And Ingest
+
+```bash
 cacten init
-
-# 4. Preview what will be ingested
 cacten ingest --dry-run
-
-# 5. Ingest your corpus
 cacten ingest --label "initial ingest"
 ```
 
-See [MCP Setup](#mcp-setup) to wire Cacten into Claude Code.
+`cacten init` creates `.cacten/sources.toml` from the committed example manifest. `cacten ingest --dry-run` lets you inspect the resolved corpus before writing anything to the KB.
+
+Manifest-based ingest is the recommended workflow because it is versioned, repeatable, and supports incremental reuse of unchanged files.
 
 ---
 
-## Ingestion workflow
+## MCP Setup
 
-### Manifest-based (recommended)
+Configure any MCP-compatible client to launch:
 
-Define your corpus once, re-run with one command.
-
-```bash
-cacten init                                    # creates .cacten/sources.toml from the example
-cacten ingest --dry-run                        # preview resolved files without ingesting
-cacten ingest                                  # ingest all resolved files as one KB version
-cacten ingest --label "post-refactor refresh"  # same, with a human-friendly label
+```json
+{
+  "mcpServers": {
+    "cacten": {
+      "command": "cacten",
+      "args": ["serve"],
+      "transport": "stdio"
+    }
+  }
+}
 ```
 
-`sources.toml` uses glob patterns:
+If your client supports project-local MCP config, this is usually the cleanest option.
+
+### Claude Code example
+
+Project-scoped setup:
+
+```bash
+claude mcp add --scope project cacten cacten serve
+```
+
+Global setup:
+
+```bash
+claude mcp add cacten cacten serve
+```
+
+Verify:
+
+```bash
+claude mcp list
+```
+
+Once registered, your MCP client can call `search_personal_kb` automatically when a question would benefit from project context.
+
+---
+
+## Manifest Workflow
+
+The manifest lives in `.cacten/sources.toml` and uses include/exclude glob patterns.
+
+Example:
 
 ```toml
 version = 1
@@ -69,79 +139,34 @@ include = [
 ]
 
 exclude = [
+  "**/.git/**",
   "**/.venv/**",
+  "**/node_modules/**",
   "**/__pycache__/**",
 ]
 ```
 
-**One ingest run = one KB version.** Every run snapshots the manifest to `.cacten/manifest-history/` for provenance.
-
-`.cacten/sources.toml` is gitignored. Commit `.cacten/sources-example.toml` as the project template — `cacten init` copies it.
-
-### Ad hoc (one-off files, URLs, directories)
+Recommended loop:
 
 ```bash
-cacten ingest ./my-notes.md
-cacten ingest ./paper.pdf
-cacten ingest https://example.com/some-page
-cacten ingest ./docs/
+cacten ingest --dry-run
+cacten ingest --label "post-refactor refresh"
+cacten versions list
 ```
+
+For manifest ingests, Cacten also:
+
+- snapshots the live manifest into `.cacten/manifest-history/`
+- records per-file metadata for incremental reuse
+- creates one immutable KB version per run
 
 ---
 
-## MCP Setup
-
-Cacten runs as a local MCP server. Register it once and Claude Code calls it automatically on relevant queries.
-
-### Option A — Project-scoped (recommended)
-
-Add to `.mcp.json` in your project root:
-
-```json
-{
-  "mcpServers": {
-    "cacten": {
-      "command": "cacten",
-      "args": ["serve"],
-      "transport": "stdio"
-    }
-  }
-}
-```
-
-### Option B — Global (works across all projects)
-
-Add to `~/.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "cacten": {
-      "command": "cacten",
-      "args": ["serve"],
-      "transport": "stdio"
-    }
-  }
-}
-```
-
-### Option C — Claude Code CLI
-
-```bash
-claude mcp add cacten cacten serve              # global
-claude mcp add --scope project cacten cacten serve  # project-scoped
-claude mcp list                                 # verify
-```
-
-Once registered, Claude Code starts the server automatically and calls `search_personal_kb` when your KB context is relevant.
-
----
-
-## CLI reference
+## CLI
 
 ### `cacten init`
 
-Initialize `.cacten/sources.toml` for this project from the example template.
+Create `.cacten/sources.toml` from `.cacten/sources-example.toml`.
 
 ```bash
 cacten init
@@ -149,32 +174,45 @@ cacten init
 
 ### `cacten ingest`
 
+Manifest-based ingest:
+
 ```bash
-cacten ingest                                  # manifest-based: reads .cacten/sources.toml
-cacten ingest --dry-run                        # preview resolved files, no KB write
-cacten ingest --label "my label"               # manifest ingest with a version label
-cacten ingest ./doc.md ./paper.pdf             # ad hoc: specific files
-cacten ingest https://example.com/page         # ad hoc: URL
-cacten ingest ./docs/ --ext .md,.py            # ad hoc: directory with extension filter
+cacten ingest
+cacten ingest --dry-run
+cacten ingest --label "my label"
+```
+
+Ad hoc ingest:
+
+```bash
+cacten ingest ./notes.md
+cacten ingest ./paper.pdf
+cacten ingest https://example.com/page
+cacten ingest ./docs --ext .md,.py
 ```
 
 ### `cacten serve`
 
+Start the local MCP server:
+
 ```bash
-cacten serve                    # start MCP server (stdio transport)
-cacten serve --passthrough      # bypass RAG, return empty context for all queries
+cacten serve
+```
+
+Passthrough mode for side-by-side comparison:
+
+```bash
+cacten serve --passthrough
 ```
 
 ### `cacten retrieve`
 
-Smoke-test retrieval without starting a full MCP session.
+Smoke-test retrieval without starting an MCP client:
 
 ```bash
-cacten retrieve "preferred error handling pattern"
-cacten retrieve "deployment strategy" --top-k 5 --verbose
+cacten retrieve "How does manifest ingest work?"
+cacten retrieve "How does versioning work?" --top-k 5 --verbose
 ```
-
-`--verbose` prints the full `<cacten_context>` block Claude would receive.
 
 ### `cacten versions`
 
@@ -184,42 +222,51 @@ cacten versions set-active <version-id-prefix>
 cacten versions delete <version-id-prefix> --yes
 ```
 
-Every ingestion creates a new version and activates it automatically.
+---
+
+## Data Layout
+
+User-level storage:
+
+```text
+~/.cacten/
+├── config.json
+├── kb/
+│   ├── qdrant/
+│   ├── versions.json
+│   └── version-files/
+└── logs/
+    └── sessions/
+```
+
+Project-level files:
+
+```text
+.cacten/
+├── sources.toml
+├── sources-example.toml
+└── manifest-history/
+```
 
 ---
 
-## Data storage
+## Technical Notes
 
-```
-~/.cacten/
-├── config.json             # active kb_version_id
-├── kb/
-│   ├── versions.json       # version registry with manifest provenance
-│   └── qdrant/             # Qdrant local storage (no Docker needed)
-└── logs/
-    └── sessions/           # structured session logs for eval export
-
-.cacten/                    # project-local (gitignored except the example)
-├── sources.toml            # live manifest — gitignored
-├── sources-example.toml    # committed template
-└── manifest-history/       # immutable snapshots of each ingest run
-```
+- Qdrant runs in local path mode; Docker is not required
+- Dense embeddings use `nomic-embed-text` through Ollama
+- Sparse retrieval uses a BM25-style encoder
+- Hybrid results are fused with DBSF
+- Final ranking uses a FastEmbed cross-encoder reranker
+- Reranking falls back gracefully to hybrid results if the reranker is unavailable
 
 ---
 
 ## Development
 
 ```bash
-uv run pytest                                        # run tests
-uv run pytest --cov --cov-report=term-missing        # with coverage
-uv run ruff check src/                               # lint
-uv run mypy src/                                     # type check
+uv run pytest
+uv run ruff check src
+uv run mypy src
 ```
 
----
-
-## Roadmap
-
-- `cacten evals export` — session log export for RAGAS eval pipelines
-- Reranker (FastEmbed/ONNX cross-encoder), HyDE query expansion, contextual retrieval
-- VS Code plugin, GitHub repo ingestion
+The repository is configured for strict typing with mypy and is covered by tests across ingestion, retrieval, reranking, versions, and MCP behavior.

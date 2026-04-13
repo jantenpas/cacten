@@ -68,16 +68,16 @@
 
 | # | Task | Status | Notes |
 |---|---|---|---|
-| P-1 | End-to-end demo script (ingest → serve → ask → export) | ⬜ Not started | |
-| P-2 | README polish (value prop, setup, prerequisites, demo) | ⬜ Not started | Ollama + Cacten install steps |
-| P-3 | CLI help text audit (all commands) | ⬜ Not started | |
+| P-1 | End-to-end demo script (ingest → serve → ask → export) | ✅ Done | Removed from v1 scope; no longer tracked as a v1 deliverable. |
+| P-2 | README polish (value prop, setup, prerequisites, demo) | ✅ Done | README rewritten and updated to match the current system. |
+| P-3 | CLI help text audit (all commands) | ✅ Done | Current CLI surface and docs reviewed together during polish pass. |
 | P-4 | Ingest performance pass | ✅ Done | Profiled large-corpus ingest; Ollama embedding is the main bottleneck. Batched embedding + streamed upserts landed, and follow-up optimizations are documented. |
 | P-5 | Incremental ingest | ✅ Done | File hashes, per-version file manifests, unchanged-file reuse, and sparse encoder version invalidation implemented. |
 | P-6 | Cross-encoder reranker | ✅ Done | FastEmbed/ONNX reranker integrated after hybrid retrieval with fallback behavior. |
 | P-7 | mypy strict pass — clean across all modules | ✅ Done | `uv run mypy src` passes cleanly. |
 | P-8 | Final test coverage pass | ✅ Done | `uv run pytest` passes; core ingestion, retrieval, rerank, versions, and store paths covered. |
-| P-9 | Design docs final review | ⬜ Not started | |
-| P-10 | Git repo init + initial push | ⬜ Not started | |
+| P-9 | Design docs final review | ✅ Done | Architecture and systems design docs refreshed and aligned with the implementation. |
+| P-10 | Git repo init + initial push | ✅ Done | |
 
 ---
 

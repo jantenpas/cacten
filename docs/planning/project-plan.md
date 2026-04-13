@@ -78,21 +78,21 @@
 ---
 
 ### Phase 4 — Polish & Portfolio Prep
-**Goal:** Project is demo-ready and portfolio-quality. README is compelling. Code is clean. CLI UX is polished.
+**Goal:** Project is portfolio-quality. README is compelling. Code is clean. CLI UX is polished.
 
 **Milestone:** Cacten is publicly shareable as a portfolio artifact.
 
 **Tasks:**
-- [ ] End-to-end demo script (ingest → ask → eval)
-- [ ] README polish: clear value prop, setup instructions, demo GIF or screenshot
-- [ ] Error messages and help text audit
+- [x] End-to-end demo script (ingest → ask → eval) — removed from v1 scope
+- [x] README polish: clear value prop, setup instructions, demo GIF or screenshot
+- [x] Error messages and help text audit
 - [x] Ingest performance pass: profile large-corpus ingest, identify embedding/upsert bottlenecks, and document follow-up optimizations
 - [x] Incremental ingest: hash resolved files, reuse unchanged file chunks across KB versions, and only re-embed changed or new files
 - [x] Cross-encoder reranker: add second-stage reranking after hybrid retrieval; see `cross-encoder-reranker-plan.md`
 - [x] Type coverage: mypy strict passes cleanly
 - [x] Test coverage: core ingestion and retrieval paths
-- [ ] CLAUDE.md and design docs final review
-- [ ] Git repo setup and initial push
+- [x] CLAUDE.md and design docs final review
+- [x] Git repo setup and initial push
 
 ---
 
